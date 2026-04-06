@@ -6,7 +6,7 @@ Maps detections to MITRE ATT&CK tactics and techniques.
 Pipelines:
   - Network Detection (C2 beacon, port scan, DNS tunnel, data exfiltration)
   - Auth Detection (brute force, impossible travel, new device, off-hours, priv esc)
-  - System Detection (planned)
+  - System Detection (cron tampering, root cmd abuse, chmod 777, kernel panic, service crash)
   - App Detection (planned)
   - Cloud Detection (planned)
   - Container/DB Detection (planned)
@@ -45,6 +45,12 @@ MITRE_MAP = {
     "new_device_login":       ("Initial Access",       "T1078 - Valid Accounts"),
     "off_hours_login":        ("Initial Access",       "T1078 - Valid Accounts"),
     "privilege_escalation":   ("Privilege Escalation", "T1548 - Abuse Elevation Control"),
+    # ── System pipeline MITRE mappings ──
+    "cron_tampering":         ("Execution",            "T1053 - Scheduled Task/Job"),
+    "root_cmd_abuse":         ("Execution",            "T1059 - Command and Scripting Interpreter"),
+    "file_permission_abuse":  ("Defense Evasion",      "T1222 - File and Directory Permissions Modification"),
+    "kernel_panic":           ("Impact",               "N/A - Kernel Panic / System Instability"),
+    "service_crash":          ("Impact",               "T1489 - Service Stop"),
 }
 
 # Suspicious processes and commands
@@ -84,6 +90,35 @@ AUTH_BRUTE_FORCE_WINDOW = 60        # in 60 seconds
 AUTH_IMPOSSIBLE_SPEED_KMH = 800     # > 800 km/h is highly suspicious
 AUTH_BUSINESS_START_HOUR = 8        # 08:00
 AUTH_BUSINESS_END_HOUR = 18         # 18:00
+
+# ── System Detection Constants ──────────────────────────────────────────────
+CRON_TAMPERING_KEYWORDS = [
+    "crontab", "/etc/cron", "/var/spool/cron", "at ", "atd", "anacron",
+    "systemctl enable", "systemctl start", "/etc/cron.d", "/etc/cron.daily",
+    "/etc/cron.hourly", "/etc/cron.weekly", "/etc/cron.monthly",
+]
+ROOT_DANGEROUS_COMMANDS = [
+    "rm -rf /", "dd if=", "mkfs.", "> /dev/sd", "chmod -R 777 /",
+    "iptables -F", "iptables --flush", "kill -9 1", "shutdown", "reboot",
+    "init 0", "init 6", "halt", "poweroff", "passwd root",
+    "userdel", "groupdel", "visudo", "chown root", "wget.*|.*sh",
+    "curl.*|.*sh", "nc -e", "ncat -e", "bash -i >& /dev/tcp",
+    "/dev/tcp/", "/dev/udp/", "python -c", "perl -e", "ruby -e",
+]
+FILE_PERM_PATTERNS = [
+    r"chmod\s+777", r"chmod\s+666", r"chmod\s+\+s", r"chmod\s+u\+s",
+    r"chmod\s+g\+s", r"chmod\s+o\+w", r"chmod\s+a\+w",
+    r"chmod\s+-R\s+777", r"chmod\s+-R\s+666",
+    r"chown\s+root:root", r"chattr\s+\-i",
+]
+KERNEL_PANIC_KEYWORDS = [
+    "kernel panic", "kernel: BUG", "kernel: Oops", "Out of memory",
+    "oom_kill_process", "oom-killer", "call trace", "segfault",
+    "general protection fault", "unable to handle kernel",
+    "soft lockup", "hard lockup", "RIP:", "kernel: NMI watchdog",
+]
+SERVICE_CRASH_RESTART_THRESHOLD = 3     # 3+ restarts
+SERVICE_CRASH_WINDOW_SECONDS = 300      # within 5 minutes
 
 
 def is_internal_ip(ip: str) -> bool:
@@ -214,12 +249,193 @@ def _is_off_hours(timestamp: datetime) -> bool:
     return False
 
 
+# ── System Handlers ──
+def _detect_cron_tampering(event: Dict) -> Optional[Dict]:
+    """Detect crontab modifications, at job scheduling, and cron directory changes (T1053)."""
+    raw_log = event.get("raw_log", "").lower()
+    action = event.get("action", "").lower()
+    process = event.get("process", "").lower()
+    combined = f"{raw_log} {action} {process}"
+
+    matches = [kw for kw in CRON_TAMPERING_KEYWORDS if kw.lower() in combined]
+    if not matches:
+        return None
+
+    # Higher confidence for direct crontab edits
+    confidence = 0.75
+    severity = "high"
+    if "crontab" in combined and ("edit" in combined or "-e" in combined or "-r" in combined):
+        confidence = 0.95
+        severity = "critical"
+    elif "/etc/cron" in combined:
+        confidence = 0.90
+        severity = "critical"
+
+    return {
+        "pipeline": "system",
+        "detection": "cron_tampering",
+        "mitre_id": "T1053",
+        "severity": severity,
+        "confidence": confidence,
+        "detection_details": {
+            "matched_keywords": matches,
+            "user": event.get("user", "unknown"),
+        },
+    }
+
+
+def _detect_root_cmd_abuse(event: Dict) -> Optional[Dict]:
+    """Detect dangerous commands executed as root or via sudo (T1059)."""
+    user = event.get("user", "").lower()
+    raw_log = event.get("raw_log", "")
+    process = event.get("process", "")
+    action = event.get("action", "").lower()
+    combined = f"{raw_log} {process}"
+
+    is_root = user == "root" or "sudo" in action or "sudo" in raw_log.lower()
+    if not is_root:
+        return None
+
+    matched = []
+    for cmd in ROOT_DANGEROUS_COMMANDS:
+        if cmd.lower() in combined.lower():
+            matched.append(cmd)
+
+    if not matched:
+        return None
+
+    # Severity escalation based on destructiveness
+    severity = "high"
+    confidence = 0.85
+    critical_cmds = ["rm -rf /", "dd if=", "mkfs.", "kill -9 1", "> /dev/sd"]
+    if any(c in combined.lower() for c in critical_cmds):
+        severity = "critical"
+        confidence = 0.95
+
+    return {
+        "pipeline": "system",
+        "detection": "root_cmd_abuse",
+        "mitre_id": "T1059",
+        "severity": severity,
+        "confidence": confidence,
+        "detection_details": {
+            "matched_commands": matched,
+            "user": event.get("user", "unknown"),
+            "raw_snippet": raw_log[:200],
+        },
+    }
+
+
+def _detect_file_permission_abuse(event: Dict) -> Optional[Dict]:
+    """Detect chmod 777, setuid/setgid changes, and broad permission modifications (T1222)."""
+    raw_log = event.get("raw_log", "")
+    process = event.get("process", "")
+    combined = f"{raw_log} {process}"
+
+    matched = []
+    for pattern in FILE_PERM_PATTERNS:
+        if re.search(pattern, combined, re.IGNORECASE):
+            matched.append(pattern)
+
+    if not matched:
+        return None
+
+    severity = "high"
+    confidence = 0.85
+    # chmod 777 on sensitive paths is critical
+    if re.search(r"chmod\s+(777|-R\s+777)", combined) and any(
+        p in combined for p in ["/etc", "/usr", "/bin", "/sbin", "/root", "/var"]
+    ):
+        severity = "critical"
+        confidence = 0.95
+    # setuid bit is always critical
+    if re.search(r"chmod\s+\+s|chmod\s+u\+s", combined):
+        severity = "critical"
+        confidence = 0.95
+
+    return {
+        "pipeline": "system",
+        "detection": "file_permission_abuse",
+        "mitre_id": "T1222",
+        "severity": severity,
+        "confidence": confidence,
+        "detection_details": {
+            "matched_patterns": matched,
+            "user": event.get("user", "unknown"),
+            "raw_snippet": raw_log[:200],
+        },
+    }
+
+
+def _detect_kernel_panic(event: Dict) -> Optional[Dict]:
+    """Detect kernel panics, OOM kills, BUGs, oops, and other critical kernel failures."""
+    raw_log = event.get("raw_log", "").lower()
+    action = event.get("action", "").lower()
+    process = event.get("process", "").lower()
+    combined = f"{raw_log} {action} {process}"
+
+    matched = [kw for kw in KERNEL_PANIC_KEYWORDS if kw.lower() in combined]
+    if not matched:
+        return None
+
+    severity = "critical"
+    confidence = 0.90
+    # Actual kernel panic is highest severity
+    if "kernel panic" in combined:
+        confidence = 0.99
+    elif "oom" in combined or "out of memory" in combined:
+        confidence = 0.92
+    elif "segfault" in combined:
+        severity = "high"
+        confidence = 0.85
+
+    return {
+        "pipeline": "system",
+        "detection": "kernel_panic",
+        "mitre_id": "N/A",
+        "severity": severity,
+        "confidence": confidence,
+        "detection_details": {
+            "matched_keywords": matched,
+            "raw_snippet": raw_log[:300],
+        },
+    }
+
+
+def _detect_service_crash(service_name: str, timestamp: Optional[datetime],
+                          service_tracker: Dict[str, List[datetime]]) -> Optional[Dict]:
+    """Detect services crashing and restarting repeatedly within a short window (T1489)."""
+    if not service_name or not timestamp:
+        return None
+
+    service_tracker.setdefault(service_name, []).append(timestamp)
+    cutoff = timestamp - timedelta(seconds=SERVICE_CRASH_WINDOW_SECONDS)
+    recent = [t for t in service_tracker[service_name] if t >= cutoff]
+    service_tracker[service_name] = recent  # prune old entries
+
+    if len(recent) >= SERVICE_CRASH_RESTART_THRESHOLD:
+        confidence = min(0.99, 0.70 + (len(recent) - SERVICE_CRASH_RESTART_THRESHOLD) * 0.05)
+        return {
+            "pipeline": "system",
+            "detection": "service_crash",
+            "mitre_id": "T1489",
+            "severity": "critical" if len(recent) >= SERVICE_CRASH_RESTART_THRESHOLD * 2 else "high",
+            "confidence": round(confidence, 2),
+            "detection_details": {
+                "service": service_name,
+                "restart_count": len(recent),
+                "window_seconds": SERVICE_CRASH_WINDOW_SECONDS,
+            },
+        }
+    return None
+
+
 def detect_suspicious_events(events: List[Dict]) -> List[Dict]:
     """
     Analyze events and flag suspicious ones with severity ratings
     and MITRE ATT&CK mappings.
 
-    Includes core rules + Network Pipeline + Auth Pipeline.
+    Includes core rules + Network Pipeline + Auth Pipeline + System Pipeline.
     """
     failed_logins = defaultdict(list)
     login_sources = defaultdict(set)
@@ -233,6 +449,8 @@ def detect_suspicious_events(events: List[Dict]) -> List[Dict]:
     auth_fail_tracker = defaultdict(list)
     user_geo_tracker = {}
     user_device_tracker = {}
+
+    service_restart_tracker: Dict[str, List[datetime]] = {}
 
     for event in events:
         action = event.get("action", "")
@@ -359,6 +577,40 @@ def detect_suspicious_events(events: List[Dict]) -> List[Dict]:
                 if timestamp and _is_off_hours(timestamp):
                     if event["severity"] == "low" or event["detection"] is None:
                         event.update({"is_suspicious": 1, "pipeline": "auth", "detection": "off_hours_login", "mitre_id": "T1078", "severity": "low", "confidence": 0.70, "detection_details": {"user": user}})
+
+        # ── Pipeline: System Detection ──
+        # Cron Tampering (T1053)
+        cron_res = _detect_cron_tampering(event)
+        if cron_res:
+            event.update({"is_suspicious": 1, **cron_res})
+
+        # Root Command Abuse (T1059)
+        root_res = _detect_root_cmd_abuse(event)
+        if root_res:
+            event.update({"is_suspicious": 1, **root_res})
+
+        # File Permission Abuse / chmod 777 (T1222)
+        perm_res = _detect_file_permission_abuse(event)
+        if perm_res:
+            event.update({"is_suspicious": 1, **perm_res})
+
+        # Kernel Panic
+        kp_res = _detect_kernel_panic(event)
+        if kp_res:
+            event.update({"is_suspicious": 1, **kp_res})
+
+        # Service Crash / Repeated Restart (T1489)
+        service_name = event.get("service") or event.get("unit")
+        if not service_name:
+            # Try to extract service name from raw log
+            svc_match = re.search(r"(?:systemd|init).*?:\s*(\S+)\.service", raw_log)
+            if svc_match:
+                service_name = svc_match.group(1)
+        restart_keywords = ["restart", "started", "activating", "failed", "crash", "core dump", "exited"]
+        if service_name and any(kw in raw_log.lower() or kw in action for kw in restart_keywords):
+            svc_res = _detect_service_crash(service_name, timestamp, service_restart_tracker)
+            if svc_res:
+                event.update({"is_suspicious": 1, **svc_res})
 
     return events
 
