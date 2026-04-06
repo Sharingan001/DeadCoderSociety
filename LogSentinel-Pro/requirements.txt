@@ -1,0 +1,21 @@
+# LogSentinel Pro v3.0 - Premium Enterprise SIEM Platform
+# Install with: pip install -r requirements.txt
+
+# Essential Dependencies
+rich>=13.0.0                 # Beautiful terminal interfaces and animations
+PyYAML>=6.0                  # Configuration management system
+
+# Optional Premium Features (for enhanced functionality)
+matplotlib>=3.5.0            # Chart generation for PDF reports
+numpy>=1.21.0                # Mathematical operations for ML analysis
+reportlab>=3.6.0             # Professional PDF report generation
+
+# Original Dependencies (maintained for compatibility)
+psutil>=5.8.0                # System monitoring and process management
+jsonschema>=4.0.0            # JSON configuration validation
+certifi>=2022.0.0            # HTTPS certificate validation
+
+# Development Dependencies (optional)
+# pytest>=7.0.0              # Testing framework
+# black>=22.0.0              # Code formatting
+# flake8>=5.0.0              # Code linting
