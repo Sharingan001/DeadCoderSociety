@@ -496,34 +496,6 @@ LogSentinel-Pro/
 
 <div align="center">
 
-### ⭐ Star this repo if you find it helpful!
-
-<br/>
-
-**Built with 💙 for Enterprise Security Operations**
-
-**April 6, 2026 · 1:00 PM**
-
-</div>
-
-<div align="center">
-
-# 🛡️ LogSentinel Pro v3.0
-
-### Enterprise SIEM Platform — *Security Information & Event Management*
-
-**Pure C++ Qt6 Desktop Application** | C++ Log Engine | Python AI Forensics | Blockchain Audit Ledger
-
-[![C++](https://img.shields.io/badge/C++-17-blue?logo=cplusplus&logoColor=white)](https://isocpp.org/)
-[![Qt6](https://img.shields.io/badge/Qt-6.9-green?logo=qt&logoColor=white)](https://www.qt.io/)
-[![Python](https://img.shields.io/badge/Python-3.10+-yellow?logo=python&logoColor=white)](https://python.org)
-[![License](https://img.shields.io/badge/License-MIT-purple)](LICENSE)
-
----
-
-*A professional, offline-first cybersecurity SIEM desktop application built with a native C++ Qt6 frontend and Python AI backend. Designed for real-time log analysis, threat detection, and forensic investigation with an immutable blockchain audit trail.*
-
-</div>
 
 ---
 
