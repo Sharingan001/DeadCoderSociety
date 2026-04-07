@@ -1,4 +1,5 @@
 <div align="center">
+⭐ Star this repo if you find it helpful!
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=0,50,100&height=180&section=header&text=LOGSENTINEL%20PRO&fontSize=70&fontColor=ffffff&animation=twinkling&fontAlignY=35&desc=Enterprise%20Log%20Management%20%26%20Security%20Analytics&descAlignY=55&descSize=18" width="100%"/>
 
