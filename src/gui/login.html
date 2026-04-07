@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in | Dynatrace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #121221; 
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .login-card {
+            background-color: #1b1b2f;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .logo-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 32px;
+        }
+        
+        .logo-container svg {
+            width: 48px; height: 48px;
+        }
+
+        .title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 4px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.2s;
+        }
+        .form-group input:focus {
+            border-color: #7b7bff;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #7b7bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #6868ff; }
+
+        .sso-btn {
+            background: #ffffff;
+            color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .sso-btn:hover { background: #f0f0f0; }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 24px 0;
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+        }
+        .divider::before, .divider::after {
+            content: ''; flex: 1; border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .divider:not(:empty)::before { margin-right: .25em; }
+        .divider:not(:empty)::after { margin-left: .25em; }
+
+        .back-nav {
+            display: flex; align-items: center; gap: 8px;
+            cursor: pointer; margin-bottom: 16px; color: #9999aa; font-size: 13px;
+        }
+        .back-nav:hover { color: #fff; }
+
+        /* Step Logic */
+        #step-password { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div class="logo-container">
+            <svg viewBox="0 0 24 24" fill="#7b7bff"><rect width="24" height="24" rx="4"/><circle cx="12" cy="12" r="6" fill="#fff"/></svg>
+        </div>
+
+        <!-- Step 1: Email -->
+        <div id="step-email">
+            <div class="title">Sign in</div>
+            <div class="form-group">
+                <input type="email" id="emailInput" placeholder="Email address" autofocus>
+            </div>
+            <button class="btn" onclick="nextStep()">Next</button>
+        </div>
+
+        <!-- Step 2: Password -->
+        <div id="step-password">
+            <div class="back-nav" onclick="prevStep()">
+                <svg viewBox="0 0 24 24" width="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                <span id="displayEmail">User</span>
+            </div>
+            <div class="title" style="text-align: left; margin-bottom: 8px;">Enter password</div>
+            <div class="form-group">
+                <input type="password" id="passwordInput" placeholder="Password">
+            </div>
+            <button class="btn" onclick="doLogin()">Sign in</button>
+        </div>
+
+    </div>
+
+    <script>
+        function nextStep() {
+            const email = document.getElementById('emailInput').value;
+            if(!email) return;
+            document.getElementById('displayEmail').innerText = email;
+            document.getElementById('step-email').style.display = 'none';
+            document.getElementById('step-password').style.display = 'block';
+            document.getElementById('passwordInput').focus();
+        }
+
+        function prevStep() {
+            document.getElementById('step-password').style.display = 'none';
+            document.getElementById('step-email').style.display = 'block';
+        }
+
+        function doLogin() {
+            // Local fallback login since it's a cloned app
+            localStorage.setItem('auth_token', 'dynatrace_simulated_token');
+            window.location.href = 'index.html';
+        }
+
+        // Add Enter key listener
+        document.getElementById('emailInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') nextStep();
+        });
+        document.getElementById('passwordInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') doLogin();
+        });
+    </script>
+</body>
+</html>

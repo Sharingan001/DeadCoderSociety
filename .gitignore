@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+venv_premium/
+env/
+ENV/
+
+# Allowed txt
+!requirements.txt
+!START_HERE.txt
+
+# C++ Build
+build/
+*.o
+*.so
+*.a
+moc_*.cpp
+ui_*.h
+Makefile
+*.pro.user
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+
+# Logs
+*.log
+/tmp/
+temp_files/
+
+# Archives
+*.tar
+*.gz
+*.Z
+*.zip
+
+# Reports
+*.txt
+*.pdf
+*.json
+forensics.db
+
+# OS
+.DS_Store
+Thumbs.db
